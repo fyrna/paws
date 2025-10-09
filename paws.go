@@ -1,4 +1,4 @@
-package apawse
+package paws
 
 import (
 	"fmt"

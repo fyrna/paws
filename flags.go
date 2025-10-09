@@ -1,4 +1,4 @@
-package apawse
+package paws
 
 type FlagType int
 

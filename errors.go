@@ -1,13 +1,13 @@
-package apawse
+package paws
 
 import "fmt"
 
 var (
-	ErrUnknownFlag  = fmt.Errorf("apawse: unknown flag")
-	ErrFlagValue    = fmt.Errorf("apawse: invalid flag value")
-	ErrMissingValue = fmt.Errorf("apawse: flag requires value")
-	ErrRequiredFlag = fmt.Errorf("apawse: required flag missing")
-	ErrParse        = fmt.Errorf("apawse: parse error")
+	ErrUnknownFlag  = fmt.Errorf("paws: unknown flag")
+	ErrFlagValue    = fmt.Errorf("paws: invalid flag value")
+	ErrMissingValue = fmt.Errorf("paws: flag requires value")
+	ErrRequiredFlag = fmt.Errorf("paws: required flag missing")
+	ErrParse        = fmt.Errorf("paws: parse error")
 )
 
 type ParseError struct {
