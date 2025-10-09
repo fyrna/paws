@@ -16,9 +16,9 @@ type ParseResult struct {
 	Command    *CommandDef
 	Positional []string
 	Flags      map[string]string
+	GlobalFlag map[string]*Flag // for global flag getter
 	DoubleDash bool
 	RawArgs    []string
-	flag       []*Flag // for global flag getter
 }
 
 type Parser struct {
@@ -47,9 +47,9 @@ func (p *Parser) AddFlags(flags ...*Flag) {
 // Parse parses command line arguments and returns the result.
 func (p *Parser) Parse(args []string) (*ParseResult, error) {
 	result := &ParseResult{
-		Flags:   make(map[string]string),
-		RawArgs: args,
-		flag:    p.Flags,
+		Flags:      make(map[string]string),
+		GlobalFlag: make(map[string]*Flag),
+		RawArgs:    args,
 	}
 
 	cmd, consumed, doubleDash, err := p.parseArgs(args, result)
@@ -410,7 +410,7 @@ func (r *ParseResult) Float(n string) float64 {
 // findFlag searches for flag definition in both global and command flags
 func (r *ParseResult) findFlag(name string) *Flag {
 	// Search in global flags
-	for _, flag := range r.flag {
+	for _, flag := range r.GlobalFlag {
 		if flag.Name == name {
 			return flag
 		}
