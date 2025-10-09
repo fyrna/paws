@@ -16,7 +16,7 @@ type ParseResult struct {
 	Command    *CommandDef
 	Positional []string
 	Flags      map[string]string
-	GlobalFlag map[string]*Flag // for global flag getter
+	GlobalFlag map[string]*Flag
 	DoubleDash bool
 	RawArgs    []string
 }
@@ -44,7 +44,6 @@ func (p *Parser) AddFlags(flags ...*Flag) {
 	p.Flags = append(p.Flags, flags...)
 }
 
-// Parse parses command line arguments and returns the result.
 func (p *Parser) Parse(args []string) (*ParseResult, error) {
 	result := &ParseResult{
 		Flags:      make(map[string]string),
@@ -52,159 +51,75 @@ func (p *Parser) Parse(args []string) (*ParseResult, error) {
 		RawArgs:    args,
 	}
 
-	cmd, consumed, doubleDash, err := p.parseArgs(args, result)
-	if err != nil {
-		return nil, err
+	var (
+		cmd        *CommandDef
+		positional []string
+		i          = 0
+	)
+
+	// Step 1: Find command
+	cmd, consumed := p.findCommand(args)
+	if cmd != nil {
+		result.Command = cmd
+		i = consumed
 	}
 
-	result.Command = cmd
-	result.DoubleDash = doubleDash
+	// Step 2: Parse flags and collect positional args
+	inPositional := false
+	for i < len(args) {
+		arg := args[i]
 
-	// Capture positional arguments
-	if doubleDash {
-		if consumed < len(args) && args[consumed] == "--" {
-			consumed++
+		if arg == "--" {
+			inPositional = true
+			i++
+			result.DoubleDash = true
+			continue
 		}
-		result.Positional = args[consumed:]
-	} else {
-		result.Positional = p.extractPositional(args, consumed)
+
+		if !inPositional && strings.HasPrefix(arg, "-") {
+			consumed, err := p.parseFlag(arg, args, i, cmd, result)
+			if err != nil {
+				return nil, err
+			}
+			i += consumed
+			continue
+		}
+
+		// Positional argument
+		positional = append(positional, arg)
+		i++
 	}
 
+	result.Positional = positional
 	return result, nil
 }
 
-// parseArgs handles the main argument parsing logic.
-func (p *Parser) parseArgs(args []string, result *ParseResult) (*CommandDef, int, bool, error) {
-	var (
-		cmd          *CommandDef
-		inPositional = false
-		doubleDash   = false
-		consumed     = 0
-	)
-
-	// Phase 1: Find command first
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
-
-		if arg == "--" {
-			doubleDash = true
-			if cmd == nil {
-				return nil, i + 1, true, nil
-			}
-			break
-		}
-
-		if strings.HasPrefix(arg, "-") {
-			// Skip flags during phase 1
-			continue
-		}
-
-		// Find matching command
-		if cmd == nil {
-			found, cmdConsumed := p.findCommand(args[i:])
-			if found != nil {
-				cmd = found
-				i += cmdConsumed - 1
-				consumed = i + 1
-			}
-		}
-	}
-
-	// Reset for phase 2: Parse all args with command context
-	consumed = 0
-	inPositional = false
-	doubleDash = false
-
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
-
-		if arg == "--" {
-			doubleDash = true
-			inPositional = true
-			consumed = i + 1
-			continue
-		}
-
-		if inPositional {
-			continue
-		}
-
-		if strings.HasPrefix(arg, "-") {
-			// Parse flag with command context
-			flagConsumed, err := p.parseFlag(arg, args, i, cmd, result)
-			if err != nil {
-				return nil, 0, false, err
-			}
-			i += flagConsumed
-			consumed = i + 1
-			continue
-		}
-
-		// Skip command parts that were already processed
-		if cmd != nil && i < len(cmd.Path) {
-			consumed = i + 1
-			continue
-		}
-
-		// Positional argument - we'll capture these later
-		consumed = i + 1
-	}
-
-	return cmd, consumed, doubleDash, nil
-}
-
-// extractPositional extracts positional arguments after command and flags.
-func (p *Parser) extractPositional(args []string, consumed int) []string {
-	if consumed >= len(args) {
-		return []string{}
-	}
-
-	var positional []string
-	inFlags := false
-
-	for i := consumed; i < len(args); i++ {
-		arg := args[i]
-
-		if arg == "--" {
-			inFlags = false
-			continue
-		}
-
-		if strings.HasPrefix(arg, "-") && !inFlags {
-			// Skip flags
-			continue
-		}
-
-		positional = append(positional, arg)
-	}
-
-	return positional
-}
-
-// findCommand searches for a command that matches the provided arguments.
 func (p *Parser) findCommand(args []string) (*CommandDef, int) {
 	var bestMatch *CommandDef
-	var bestConsumed int
+	bestLength := 0
 
 	for _, cmd := range p.Commands {
 		if len(cmd.Path) <= len(args) {
 			match := true
+
 			for j, part := range cmd.Path {
-				if args[j] != part {
+				if j >= len(args) || args[j] != part {
 					match = false
 					break
 				}
 			}
-			if match && len(cmd.Path) > bestConsumed {
+
+			if match && len(cmd.Path) > bestLength {
 				bestMatch = cmd
-				bestConsumed = len(cmd.Path)
+				bestLength = len(cmd.Path)
 			}
 		}
 	}
-	return bestMatch, bestConsumed
+
+	return bestMatch, bestLength
 }
 
-// parseFlag handles flag parsing for both long and short formats.
+// parseFlag - consolidated flag parsing
 func (p *Parser) parseFlag(arg string, args []string, i int, cmd *CommandDef, result *ParseResult) (int, error) {
 	if strings.HasPrefix(arg, "--") {
 		return p.parseLongFlag(arg, args, i, cmd, result)
@@ -212,7 +127,7 @@ func (p *Parser) parseFlag(arg string, args []string, i int, cmd *CommandDef, re
 	return p.parseShortFlag(arg, args, i, cmd, result)
 }
 
-// parseLongFlag handles long format flags (--flag).
+// parseLongFlag - handle --flag and --flag=value
 func (p *Parser) parseLongFlag(arg string, args []string, i int, cmd *CommandDef, result *ParseResult) (int, error) {
 	flagName := strings.TrimPrefix(arg, "--")
 
@@ -220,11 +135,13 @@ func (p *Parser) parseLongFlag(arg string, args []string, i int, cmd *CommandDef
 	if strings.Contains(flagName, "=") {
 		parts := strings.SplitN(flagName, "=", 2)
 		flagDef := p.findFlag(parts[0], cmd)
+
 		if flagDef == nil {
 			return 0, errorUnknownFlag(parts[0])
 		}
+
 		result.Flags[flagDef.Name] = parts[1]
-		return 0, nil
+		return 1, nil
 	}
 
 	flagDef := p.findFlag(flagName, cmd)
@@ -234,23 +151,46 @@ func (p *Parser) parseLongFlag(arg string, args []string, i int, cmd *CommandDef
 
 	if flagDef.Type == BoolType {
 		result.Flags[flagDef.Name] = "true"
-		return 0, nil
+		return 1, nil
 	}
 
+	// Non-boolean flag requires value
 	if i+1 >= len(args) || strings.HasPrefix(args[i+1], "-") {
 		return 0, errorMissingValue(flagName)
 	}
 
 	result.Flags[flagDef.Name] = args[i+1]
-	return 1, nil
+	return 2, nil
 }
 
-// parseShortFlag handles short format flags (-f).
+// parseShortFlag - handle -f and -f value
 func (p *Parser) parseShortFlag(arg string, args []string, i int, cmd *CommandDef, result *ParseResult) (int, error) {
 	flagChars := strings.TrimPrefix(arg, "-")
-	consumed := 0
 
-	for j, char := range flagChars {
+	// Handle single flag: -f
+	if len(flagChars) == 1 {
+		flagDef := p.findFlag(flagChars, cmd)
+
+		if flagDef == nil {
+			return 0, errorUnknownFlag(flagChars)
+		}
+
+		if flagDef.Type == BoolType {
+			result.Flags[flagDef.Name] = "true"
+			return 1, nil
+		}
+
+		// Non-boolean flag requires value
+		if i+1 >= len(args) || strings.HasPrefix(args[i+1], "-") {
+			return 0, errorMissingValue(flagChars)
+		}
+
+		result.Flags[flagDef.Name] = args[i+1]
+		return 2, nil
+	}
+
+	// Handle grouped flags: -abc (only boolean flags allowed)
+	for _, char := range flagChars {
 		flagStr := string(char)
 		flagDef := p.findFlag(flagStr, cmd)
 
@@ -258,45 +198,28 @@ func (p *Parser) parseShortFlag(arg string, args []string, i int, cmd *CommandDe
 			return 0, errorUnknownFlag(flagStr)
 		}
 
-		if flagDef.Type == BoolType {
-			result.Flags[flagDef.Name] = "true"
-			continue
+		if flagDef.Type != BoolType {
+			return 0, fmt.Errorf("non-boolean flag -%s cannot be grouped", flagStr)
 		}
 
-		if j < len(flagChars)-1 {
-			return 0, fmt.Errorf("flag -%s requires value and cannot be grouped", flagStr)
-		}
-
-		if i+1 >= len(args) || strings.HasPrefix(args[i+1], "-") {
-			return 0, errorMissingValue(flagStr)
-		}
-
-		result.Flags[flagDef.Name] = args[i+1]
-		consumed = 1
+		result.Flags[flagDef.Name] = "true"
 	}
 
-	return consumed, nil
+	return 1, nil
 }
 
-// findFlag searches for flag definition by name or alias.
 func (p *Parser) findFlag(name string, cmd *CommandDef) *Flag {
 	// Search in global flags first
 	for _, flag := range p.Flags {
-		if flag.Name == name {
-			return flag
-		}
-		if slices.Contains(flag.Aliases, name) {
+		if flag.Name == name || slices.Contains(flag.Aliases, name) {
 			return flag
 		}
 	}
 
-	// Search in command flags if command context exists
+	// Search in command flags
 	if cmd != nil {
 		for _, flag := range cmd.Flags {
-			if flag.Name == name {
-				return flag
-			}
-			if slices.Contains(flag.Aliases, name) {
+			if flag.Name == name || slices.Contains(flag.Aliases, name) {
 				return flag
 			}
 		}
@@ -308,13 +231,15 @@ func (p *Parser) findFlag(name string, cmd *CommandDef) *Flag {
 // ValidateRequired checks if all required flags are provided.
 func (p *Parser) ValidateRequired(result *ParseResult) error {
 	allFlags := p.Flags
+
 	if result.Command != nil {
 		allFlags = append(allFlags, result.Command.Flags...)
 	}
 
 	for _, flag := range allFlags {
 		if flag.IsRequired && flag.Type != BoolType {
-			if value, exists := result.Flags[flag.Name]; !exists || value == "" {
+			value, exists := result.Flags[flag.Name]
+			if !exists || value == "" {
 				return errorRequiredFlag(flag.Name)
 			}
 		}
@@ -331,7 +256,9 @@ func (r *ParseResult) Bool(n string) bool {
 	}
 
 	// Look for default value from flag definition
-	if flag := r.findFlag(n); flag != nil && flag.DefValue != nil {
+	flag := r.findFlag(n)
+
+	if flag != nil && flag.DefValue != nil {
 		if b, ok := flag.DefValue.(bool); ok {
 			return b
 		}
@@ -345,7 +272,8 @@ func (r *ParseResult) String(n string) string {
 		return val
 	}
 
-	if flag := r.findFlag(n); flag != nil && flag.DefValue != nil {
+	flag := r.findFlag(n)
+	if flag != nil && flag.DefValue != nil {
 		if s, ok := flag.DefValue.(string); ok {
 			return s
 		}
@@ -361,7 +289,8 @@ func (r *ParseResult) Int(n string) int {
 		}
 	}
 
-	if flag := r.findFlag(n); flag != nil && flag.DefValue != nil {
+	flag := r.findFlag(n)
+	if flag != nil && flag.DefValue != nil {
 		if i, ok := flag.DefValue.(int); ok {
 			return i
 		}
@@ -377,7 +306,8 @@ func (r *ParseResult) Uint(n string) uint {
 		}
 	}
 
-	if flag := r.findFlag(n); flag != nil && flag.DefValue != nil {
+	flag := r.findFlag(n)
+	if flag != nil && flag.DefValue != nil {
 		if u, ok := flag.DefValue.(uint); ok {
 			return u
 		}
@@ -396,7 +326,8 @@ func (r *ParseResult) Float(n string) float64 {
 		}
 	}
 
-	if flag := r.findFlag(n); flag != nil && flag.DefValue != nil {
+	flag := r.findFlag(n)
+	if flag != nil && flag.DefValue != nil {
 		if f, ok := flag.DefValue.(float64); ok {
 			return f
 		}

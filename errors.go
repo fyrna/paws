@@ -38,13 +38,3 @@ func errorMissingValue(flag string) *ParseError {
 func errorRequiredFlag(flag string) *ParseError {
 	return &ParseError{Err: ErrRequiredFlag, Flag: flag}
 }
-
-// unused, but it is a valid thing
-// func errorFlagValue(flag, value string, cause error) *ParseError {
-// 	return &ParseError{
-// 		Err:   ErrFlagValue,
-// 		Flag:  flag,
-// 		Value: value,
-// 		Cause: cause,
-// 	}
-// }
