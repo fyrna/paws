@@ -51,6 +51,14 @@ func (p *Parser) Parse(args []string) (*ParseResult, error) {
 		RawArgs:    args,
 	}
 
+	for _, flag := range p.Flags {
+		result.GlobalFlag[flag.Name] = flag
+
+		for _, alias := range flag.Aliases {
+			result.GlobalFlag[alias] = flag
+		}
+	}
+
 	var (
 		cmd        *CommandDef
 		positional []string
@@ -341,16 +349,14 @@ func (r *ParseResult) Float(n string) float64 {
 // findFlag searches for flag definition in both global and command flags
 func (r *ParseResult) findFlag(name string) *Flag {
 	// Search in global flags
-	for _, flag := range r.GlobalFlag {
-		if flag.Name == name {
-			return flag
-		}
+	if flag, exists := r.GlobalFlag[name]; exists {
+		return flag
 	}
 
 	// Search in command flags
 	if r.Command != nil {
 		for _, flag := range r.Command.Flags {
-			if flag.Name == name {
+			if flag.Name == name || slices.Contains(flag.Aliases, name) {
 				return flag
 			}
 		}
