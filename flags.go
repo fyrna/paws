@@ -10,6 +10,10 @@ const (
 	FloatType
 )
 
+type FlagTypeConstrait interface {
+	~string | ~bool | ~int | ~uint | ~float64
+}
+
 // Flag represents a command line flag definition
 type Flag struct {
 	Name       string
@@ -22,51 +26,35 @@ type Flag struct {
 	HelpText   string
 }
 
-// some litte sugar function :3
+func Paw[T FlagTypeConstrait](name string, aliases ...string) *Flag {
+	var (
+		t      FlagType
+		defVal T
+	)
 
-// PawBool creates a new boolean flag
-func PawBool(name string, aliases ...string) *Flag {
+	switch any(defVal).(type) {
+	case bool:
+		t = BoolType
+		defVal = any(false).(T)
+	case int:
+		t = IntType
+		defVal = any(0).(T)
+	case uint:
+		t = UintType
+		defVal = any(uint(0)).(T)
+	case float64:
+		t = FloatType
+		defVal = any(0.0).(T)
+	case string:
+		t = StringType
+		defVal = any("").(T)
+	}
+
 	return &Flag{
 		Name:     name,
 		Aliases:  aliases,
-		Type:     BoolType,
-		DefValue: false,
-	}
-}
-
-// PawString creates a new string flag
-func PawString(name string, aliases ...string) *Flag {
-	return &Flag{
-		Name:    name,
-		Aliases: aliases,
-		Type:    StringType,
-	}
-}
-
-// PawInt creates a new integer flag
-func PawInt(name string, aliases ...string) *Flag {
-	return &Flag{
-		Name:    name,
-		Aliases: aliases,
-		Type:    IntType,
-	}
-}
-
-// PawUint creates a new unsigned integer flag
-func PawUint(name string, aliases ...string) *Flag {
-	return &Flag{
-		Name:    name,
-		Aliases: aliases,
-		Type:    UintType,
-	}
-}
-
-// PawFloat creates a new float flag
-func PawFloat(name string, aliases ...string) *Flag {
-	return &Flag{
-		Name:    name,
-		Aliases: aliases,
-		Type:    FloatType,
+		Type:     t,
+		DefValue: defVal,
 	}
 }
 
