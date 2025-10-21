@@ -2,6 +2,7 @@ package paws
 
 import "fmt"
 
+// Common error types for argument parsing
 var (
 	ErrUnknownFlag  = fmt.Errorf("paws: unknown flag")
 	ErrFlagValue    = fmt.Errorf("paws: invalid flag value")
@@ -10,6 +11,7 @@ var (
 	ErrParse        = fmt.Errorf("paws: parse error")
 )
 
+// ParseError represents a parsing error with context
 type ParseError struct {
 	Err   error  // Error type (ErrUnknownFlag, etc)
 	Flag  string // Flag name involved
@@ -17,6 +19,7 @@ type ParseError struct {
 	Cause error  // Underlying error
 }
 
+// Error returns a formatted error message
 func (e *ParseError) Error() string {
 	if e.Cause != nil {
 		return fmt.Sprintf("%s: %s (%s)", e.Err.Error(), e.Flag, e.Cause.Error())
@@ -27,14 +30,18 @@ func (e *ParseError) Error() string {
 	return fmt.Sprintf("%s: %s", e.Err.Error(), e.Flag)
 }
 
+// Unwrap returns the underlying error
 func (e *ParseError) Unwrap() error { return e.Err }
 
+// Helper functions to create specific parse errors
 func errorUnknownFlag(flag string) *ParseError {
 	return &ParseError{Err: ErrUnknownFlag, Flag: flag}
 }
+
 func errorMissingValue(flag string) *ParseError {
 	return &ParseError{Err: ErrMissingValue, Flag: flag}
 }
+
 func errorRequiredFlag(flag string) *ParseError {
 	return &ParseError{Err: ErrRequiredFlag, Flag: flag}
 }

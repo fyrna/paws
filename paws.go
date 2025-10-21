@@ -7,25 +7,29 @@ import (
 	"strings"
 )
 
+// CommandDef represents a command definition with its path and flags
 type CommandDef struct {
-	Path  []string
-	Flags []*Flag
+	Path  []string // Command path (e.g., ["git", "commit"])
+	Flags []*Flag  // Command-specific flags
 }
 
+// ParseResult contains the result of parsing command line arguments
 type ParseResult struct {
-	Command    *CommandDef
-	Positional []string
-	Flags      map[string]string
-	GlobalFlag map[string]*Flag
-	DoubleDash bool
-	RawArgs    []string
+	Command    *CommandDef       // Matched command (if any)
+	Positional []string          // Positional arguments
+	Flags      map[string]string // Parsed flag values
+	GlobalFlag map[string]*Flag  // Global flag definitions
+	DoubleDash bool              // Whether -- was encountered
+	RawArgs    []string          // Original arguments
 }
 
+// Parser is the main argument parser
 type Parser struct {
-	Commands []*CommandDef
-	Flags    []*Flag
+	Commands []*CommandDef // Registered commands
+	Flags    []*Flag       // Global flags
 }
 
+// New creates a new argument parser
 func New() *Parser {
 	return &Parser{
 		Commands: []*CommandDef{},
@@ -33,6 +37,7 @@ func New() *Parser {
 	}
 }
 
+// AddCommand registers a new command with the parser
 func (p *Parser) AddCommand(path []string, flags []*Flag) {
 	p.Commands = append(p.Commands, &CommandDef{
 		Path:  path,
@@ -40,10 +45,12 @@ func (p *Parser) AddCommand(path []string, flags []*Flag) {
 	})
 }
 
+// AddFlags registers global flags with the parser
 func (p *Parser) AddFlags(flags ...*Flag) {
 	p.Flags = append(p.Flags, flags...)
 }
 
+// Parse parses command line arguments and returns a ParseResult
 func (p *Parser) Parse(args []string) (*ParseResult, error) {
 	result := &ParseResult{
 		Flags:      make(map[string]string),
@@ -51,9 +58,9 @@ func (p *Parser) Parse(args []string) (*ParseResult, error) {
 		RawArgs:    args,
 	}
 
+	// Build global flag lookup table
 	for _, flag := range p.Flags {
 		result.GlobalFlag[flag.Name] = flag
-
 		for _, alias := range flag.Aliases {
 			result.GlobalFlag[alias] = flag
 		}
@@ -102,6 +109,7 @@ func (p *Parser) Parse(args []string) (*ParseResult, error) {
 	return result, nil
 }
 
+// findCommand searches for the best matching command in the arguments
 func (p *Parser) findCommand(args []string) (*CommandDef, int) {
 	var bestMatch *CommandDef
 	bestLength := 0
@@ -109,14 +117,12 @@ func (p *Parser) findCommand(args []string) (*CommandDef, int) {
 	for _, cmd := range p.Commands {
 		if len(cmd.Path) <= len(args) {
 			match := true
-
 			for j, part := range cmd.Path {
 				if j >= len(args) || args[j] != part {
 					match = false
 					break
 				}
 			}
-
 			if match && len(cmd.Path) > bestLength {
 				bestMatch = cmd
 				bestLength = len(cmd.Path)
@@ -127,7 +133,7 @@ func (p *Parser) findCommand(args []string) (*CommandDef, int) {
 	return bestMatch, bestLength
 }
 
-// parseFlag - consolidated flag parsing
+// parseFlag handles both long and short flag parsing
 func (p *Parser) parseFlag(arg string, args []string, i int, cmd *CommandDef, result *ParseResult) (int, error) {
 	if strings.HasPrefix(arg, "--") {
 		return p.parseLongFlag(arg, args, i, cmd, result)
@@ -135,7 +141,7 @@ func (p *Parser) parseFlag(arg string, args []string, i int, cmd *CommandDef, re
 	return p.parseShortFlag(arg, args, i, cmd, result)
 }
 
-// parseLongFlag - handle --flag and --flag=value
+// parseLongFlag handles --flag and --flag=value formats
 func (p *Parser) parseLongFlag(arg string, args []string, i int, cmd *CommandDef, result *ParseResult) (int, error) {
 	flagName := strings.TrimPrefix(arg, "--")
 
@@ -143,11 +149,9 @@ func (p *Parser) parseLongFlag(arg string, args []string, i int, cmd *CommandDef
 	if strings.Contains(flagName, "=") {
 		parts := strings.SplitN(flagName, "=", 2)
 		flagDef := p.findFlag(parts[0], cmd)
-
 		if flagDef == nil {
 			return 0, errorUnknownFlag(parts[0])
 		}
-
 		result.Flags[flagDef.Name] = parts[1]
 		return 1, nil
 	}
@@ -171,14 +175,13 @@ func (p *Parser) parseLongFlag(arg string, args []string, i int, cmd *CommandDef
 	return 2, nil
 }
 
-// parseShortFlag - handle -f and -f value
+// parseShortFlag handles -f and -f value formats
 func (p *Parser) parseShortFlag(arg string, args []string, i int, cmd *CommandDef, result *ParseResult) (int, error) {
 	flagChars := strings.TrimPrefix(arg, "-")
 
 	// Handle single flag: -f
 	if len(flagChars) == 1 {
 		flagDef := p.findFlag(flagChars, cmd)
-
 		if flagDef == nil {
 			return 0, errorUnknownFlag(flagChars)
 		}
@@ -201,21 +204,19 @@ func (p *Parser) parseShortFlag(arg string, args []string, i int, cmd *CommandDe
 	for _, char := range flagChars {
 		flagStr := string(char)
 		flagDef := p.findFlag(flagStr, cmd)
-
 		if flagDef == nil {
 			return 0, errorUnknownFlag(flagStr)
 		}
-
 		if flagDef.Type != BoolType {
 			return 0, fmt.Errorf("non-boolean flag -%s cannot be grouped", flagStr)
 		}
-
 		result.Flags[flagDef.Name] = "true"
 	}
 
 	return 1, nil
 }
 
+// findFlag searches for a flag definition by name
 func (p *Parser) findFlag(name string, cmd *CommandDef) *Flag {
 	// Search in global flags first
 	for _, flag := range p.Flags {
@@ -236,7 +237,7 @@ func (p *Parser) findFlag(name string, cmd *CommandDef) *Flag {
 	return nil
 }
 
-// ValidateRequired checks if all required flags are provided.
+// ValidateRequired checks if all required flags are provided
 func (p *Parser) ValidateRequired(result *ParseResult) error {
 	allFlags := p.Flags
 
@@ -255,8 +256,6 @@ func (p *Parser) ValidateRequired(result *ParseResult) error {
 	return nil
 }
 
-// if res.Flag["paw"] == "true" ? that stupid.
-
 // Bool returns boolean value for flag, using default value if not provided
 func (r *ParseResult) Bool(n string) bool {
 	if val, exists := r.Flags[n]; exists {
@@ -265,7 +264,6 @@ func (r *ParseResult) Bool(n string) bool {
 
 	// Look for default value from flag definition
 	flag := r.findFlag(n)
-
 	if flag != nil && flag.DefValue != nil {
 		if b, ok := flag.DefValue.(bool); ok {
 			return b
