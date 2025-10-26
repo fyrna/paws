@@ -11,7 +11,7 @@ const (
 )
 
 // FlagTypeConstrait defines the allowed types for flag values
-type FlagTypeConstrait interface {
+type FlagTypeConstraint interface {
 	~string | ~bool | ~int | ~uint | ~float64
 }
 
@@ -29,7 +29,7 @@ type Flag struct {
 
 // Paw creates a new flag with the specified name and aliases
 // The type is automatically determined from the generic type parameter T
-func Paw[T FlagTypeConstrait](name string, aliases ...string) *Flag {
+func Paw[T FlagTypeConstraint](name string, aliases ...string) *Flag {
 	var (
 		t      FlagType
 		defVal T
