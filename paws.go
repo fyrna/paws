@@ -173,6 +173,23 @@ func (p *Parser) parseLongFlag(arg string, args []string, i int, cmd *CommandDef
 	}
 
 	if flagDef.Type == BoolType {
+		// check if next argument exists and is not a flag
+		// (for '--cute true' format)
+		if i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+			value := args[i+1]
+			if err := p.validateFlagValue(flagDef, value); err != nil {
+				return 0, &ParseError{
+					Err:   ErrFlagValue,
+					Flag:  flagDef.Name,
+					Value: value,
+					Cause: err,
+				}
+			}
+			result.Flags[flagDef.Name] = value
+			return 2, nil
+		}
+
+		// (--cute) means true (no value provided)
 		result.Flags[flagDef.Name] = "true"
 		return 1, nil
 	}
@@ -210,6 +227,21 @@ func (p *Parser) parseShortFlag(arg string, args []string, i int, cmd *CommandDe
 		}
 
 		if flagDef.Type == BoolType {
+			// -c yes format
+			if i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+				value := args[i+1]
+				if err := p.validateFlagValue(flagDef, value); err != nil {
+					return 0, &ParseError{
+						Err:   ErrFlagValue,
+						Flag:  flagDef.Name,
+						Value: value,
+						Cause: err,
+					}
+				}
+				result.Flags[flagDef.Name] = value
+				return 2, nil
+			}
+			// -c
 			result.Flags[flagDef.Name] = "true"
 			return 1, nil
 		}
@@ -295,18 +327,15 @@ func (p *Parser) ValidateRequired(result *ParseResult) error {
 func (p *Parser) validateFlagValue(flag *Flag, value string) error {
 	switch flag.Type {
 	case StringType:
-		if len(flag.ChoicesOpt) > 0 {
-			if !slices.Contains(flag.ChoicesOpt, value) {
-				return fmt.Errorf("value '%s' not in allowed choices: %v", value, flag.ChoicesOpt)
-			}
+		if len(flag.ChoicesOpt) > 0 && !slices.Contains(flag.ChoicesOpt, value) {
+			return fmt.Errorf("value '%s' not in allowed choices: %v", value, flag.ChoicesOpt)
 		}
 
 	case IntType:
 		val, err := strconv.Atoi(value)
 		if err != nil {
-			return fmt.Errorf("invalid integer value: %s", value)
+			return fmt.Errorf("invalid integer value: '%s'", value)
 		}
-
 		if flag.Min != 0 || flag.Max != 0 {
 			if val < flag.Min || val > flag.Max {
 				return fmt.Errorf("value %d out of range [%d, %d]", val, flag.Min, flag.Max)
@@ -316,25 +345,29 @@ func (p *Parser) validateFlagValue(flag *Flag, value string) error {
 	case UintType:
 		val, err := strconv.ParseUint(value, 10, 0)
 		if err != nil {
-			return fmt.Errorf("invalid unsigned integer value: %s", value)
+			return fmt.Errorf("invalid unsigned integer value: '%s'", value)
 		}
-
 		if flag.Min != 0 || flag.Max != 0 {
-			if val < uint64(flag.Min) || val > uint64(flag.Max) {
+			if int64(val) < int64(flag.Min) || int64(val) > int64(flag.Max) {
 				return fmt.Errorf("value %d out of range [%d, %d]", val, flag.Min, flag.Max)
 			}
 		}
 
 	case FloatType:
-		floatVal, err := strconv.ParseFloat(value, 64)
+		val, err := strconv.ParseFloat(value, 64)
 		if err != nil {
-			return fmt.Errorf("invalid float value: %s", value)
+			return fmt.Errorf("invalid float value: '%s'", value)
+		}
+		if flag.Min != 0 || flag.Max != 0 {
+			if val < float64(flag.Min) || val > float64(flag.Max) {
+				return fmt.Errorf("value %f out of range [%d, %d]", val, flag.Min, flag.Max)
+			}
 		}
 
-		if flag.Min != 0 || flag.Max != 0 {
-			if floatVal < float64(flag.Min) || floatVal > float64(flag.Max) {
-				return fmt.Errorf("value %f out of range [%d, %d]", floatVal, flag.Min, flag.Max)
-			}
+	case BoolType:
+		// Boolean flags accept various truthy/falsy values
+		if !isValidBoolValue(value) {
+			return fmt.Errorf("invalid boolean value: '%s' (allowed: true/t/yes/y/false/f/no/n)", value)
 		}
 	}
 
@@ -344,7 +377,7 @@ func (p *Parser) validateFlagValue(flag *Flag, value string) error {
 // Bool returns boolean value for flag, using default value if not provided
 func (r *ParseResult) Bool(n string) bool {
 	if val, exists := r.Flags[n]; exists {
-		return val == "true"
+		return parseBoolValue(val)
 	}
 
 	// Look for default value from flag definition
@@ -446,4 +479,26 @@ func (r *ParseResult) findFlag(name string) *Flag {
 	}
 
 	return nil
+}
+
+// isValidBoolValue checks if a string represents a valid boolean value
+func isValidBoolValue(value string) bool {
+	switch strings.ToLower(value) {
+	case "true", "t", "yes", "y", "1", "false", "f", "no", "n", "0":
+		return true
+	default:
+		return false
+	}
+}
+
+// parseBoolValue converts various string representations to boolean
+func parseBoolValue(value string) bool {
+	switch strings.ToLower(value) {
+	case "true", "t", "yes", "y", "1":
+		return true
+	case "false", "f", "no", "n", "0":
+		return false
+	default:
+		return false // fallback, should not happen if validated
+	}
 }
