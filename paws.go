@@ -348,8 +348,10 @@ func (p *Parser) validateFlagValue(flag *Flag, value string) error {
 			return fmt.Errorf("invalid unsigned integer value: '%s'", value)
 		}
 		if flag.Min != 0 || flag.Max != 0 {
-			if int64(val) < int64(flag.Min) || int64(val) > int64(flag.Max) {
-				return fmt.Errorf("value %d out of range [%d, %d]", val, flag.Min, flag.Max)
+			// Ensure min is not negative for uint
+			m := min(flag.Min, 0)
+			if val < uint64(m) || val > uint64(flag.Max) {
+				return fmt.Errorf("value %d out of range [%d, %d]", val, m, flag.Max)
 			}
 		}
 
