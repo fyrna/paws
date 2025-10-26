@@ -31,33 +31,28 @@ type Flag struct {
 // The type is automatically determined from the generic type parameter T
 func Paw[T FlagTypeConstraint](name string, aliases ...string) *Flag {
 	var (
-		t      FlagType
-		defVal T
+		def T
+		t   FlagType
 	)
 
-	switch any(defVal).(type) {
+	switch any(def).(type) {
 	case bool:
 		t = BoolType
-		defVal = any(false).(T)
 	case int:
 		t = IntType
-		defVal = any(0).(T)
 	case uint:
 		t = UintType
-		defVal = any(uint(0)).(T)
 	case float64:
 		t = FloatType
-		defVal = any(0.0).(T)
 	case string:
 		t = StringType
-		defVal = any("").(T)
 	}
 
 	return &Flag{
 		Name:     name,
 		Aliases:  aliases,
 		Type:     t,
-		DefValue: defVal,
+		DefValue: def,
 	}
 }
 
