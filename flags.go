@@ -10,7 +10,7 @@ const (
 	FloatType                  // Floating point flag
 )
 
-// FlagTypeConstrait defines the allowed types for flag values
+// FlagTypeConstraint defines the allowed types for flag values
 type FlagTypeConstraint interface {
 	~string | ~bool | ~int | ~uint | ~float64
 }
