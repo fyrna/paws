@@ -349,7 +349,7 @@ func (p *Parser) validateFlagValue(flag *Flag, value string) error {
 		}
 		if flag.Min != 0 || flag.Max != 0 {
 			// Ensure min is not negative for uint
-			m := min(flag.Min, 0)
+			m := max(0, flag.Min)
 			if val < uint64(m) || val > uint64(flag.Max) {
 				return fmt.Errorf("value %d out of range [%d, %d]", val, m, flag.Max)
 			}
