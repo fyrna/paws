@@ -484,23 +484,99 @@ func (r *ParseResult) findFlag(name string) *Flag {
 }
 
 // isValidBoolValue checks if a string represents a valid boolean value
-func isValidBoolValue(value string) bool {
-	switch strings.ToLower(value) {
-	case "true", "t", "yes", "y", "1", "false", "f", "no", "n", "0":
-		return true
-	default:
+func isValidBoolValue(v string) bool {
+	if len(v) == 0 {
 		return false
 	}
+
+	if len(v) == 1 {
+		c := v[0]
+		return c == 't' || c == 'f' ||
+			c == 'T' || c == 'F' ||
+			c == 'y' || c == 'n' ||
+			c == 'Y' || c == 'N' ||
+			c == '1' || c == '0'
+	}
+
+	switch len(v) {
+	case 2: // "no", "NO", "No", "nO"
+		return (v[0] == 'n' || v[0] == 'N') &&
+			(v[1] == 'o' || v[1] == 'O')
+
+	case 3: // "yes", "YES", "Yes", etc
+		if (v[0] == 'y' || v[0] == 'Y') &&
+			(v[1] == 'e' || v[1] == 'E') &&
+			(v[2] == 's' || v[2] == 'S') {
+			return true
+		}
+
+	case 4: // "true", "TRUE", "True", etc
+		if (v[0] == 't' || v[0] == 'T') &&
+			(v[1] == 'r' || v[1] == 'R') &&
+			(v[2] == 'u' || v[2] == 'U') &&
+			(v[3] == 'e' || v[3] == 'E') {
+			return true
+		}
+
+	case 5: // "false", "FALSE", "False", etc
+		if (v[0] == 'f' || v[0] == 'F') &&
+			(v[1] == 'a' || v[1] == 'A') &&
+			(v[2] == 'l' || v[2] == 'L') &&
+			(v[3] == 's' || v[3] == 'S') &&
+			(v[4] == 'e' || v[4] == 'E') {
+			return true
+		}
+	}
+
+	return false
 }
 
 // parseBoolValue converts various string representations to boolean
 func parseBoolValue(value string) bool {
-	switch strings.ToLower(value) {
-	case "true", "t", "yes", "y", "1":
-		return true
-	case "false", "f", "no", "n", "0":
+	if len(value) == 0 {
 		return false
-	default:
-		return false // fallback, should not happen if validated
 	}
+
+	if len(value) == 1 {
+		switch value[0] {
+		case 't', 'T', 'y', 'Y', '1':
+			return true
+		default: // 'f', 'F', 'n', 'N', '0'
+			return false
+		}
+	}
+
+	switch len(value) {
+	case 2: // "no" - false
+		if (value[0] == 'n' || value[0] == 'N') &&
+			(value[1] == 'o' || value[1] == 'O') {
+			return false
+		}
+
+	case 3: // "yes" - true
+		if (value[0] == 'y' || value[0] == 'Y') &&
+			(value[1] == 'e' || value[1] == 'E') &&
+			(value[2] == 's' || value[2] == 'S') {
+			return true
+		}
+
+	case 4: // "true" - true
+		if (value[0] == 't' || value[0] == 'T') &&
+			(value[1] == 'r' || value[1] == 'R') &&
+			(value[2] == 'u' || value[2] == 'U') &&
+			(value[3] == 'e' || value[3] == 'E') {
+			return true
+		}
+
+	case 5: // "false" - false
+		if (value[0] == 'f' || value[0] == 'F') &&
+			(value[1] == 'a' || value[1] == 'A') &&
+			(value[2] == 'l' || value[2] == 'L') &&
+			(value[3] == 's' || value[3] == 'S') &&
+			(value[4] == 'e' || value[4] == 'E') {
+			return false
+		}
+	}
+
+	return false
 }

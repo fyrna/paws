@@ -1,14 +1,17 @@
 package paws
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
 
 // Common error types for argument parsing
 var (
-	ErrUnknownFlag  = fmt.Errorf("paws: unknown flag")
-	ErrFlagValue    = fmt.Errorf("paws: invalid flag value")
-	ErrMissingValue = fmt.Errorf("paws: flag requires value")
-	ErrRequiredFlag = fmt.Errorf("paws: required flag missing")
-	ErrParse        = fmt.Errorf("paws: parse error")
+	ErrUnknownFlag  = errors.New("paws: unknown flag")
+	ErrFlagValue    = errors.New("paws: invalid flag value")
+	ErrMissingValue = errors.New("paws: flag requires value")
+	ErrRequiredFlag = errors.New("paws: required flag missing")
+	ErrParse        = errors.New("paws: parse error")
 )
 
 // ParseError represents a parsing error with context
