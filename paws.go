@@ -135,151 +135,78 @@ func (p *Parser) findCommand(args []string) (*CommandDef, int) {
 
 // parseFlag handles both long and short flag parsing
 func (p *Parser) parseFlag(arg string, args []string, i int, cmd *CommandDef, result *ParseResult) (int, error) {
-	if strings.HasPrefix(arg, "--") {
-		return p.parseLongFlag(arg, args, i, cmd, result)
+	long := strings.HasPrefix(arg, "--")
+	nameStart := 2
+
+	if !long {
+		nameStart = 1
 	}
-	return p.parseShortFlag(arg, args, i, cmd, result)
-}
 
-// parseLongFlag handles --flag and --flag=value formats
-func (p *Parser) parseLongFlag(arg string, args []string, i int, cmd *CommandDef, result *ParseResult) (int, error) {
-	flagName := strings.TrimPrefix(arg, "--")
+	s := arg[nameStart:]
 
-	// Handle --flag=value format
-	if strings.Contains(flagName, "=") {
-		parts := strings.SplitN(flagName, "=", 2)
-		flagDef := p.findFlag(parts[0], cmd)
-		if flagDef == nil {
-			return 0, errorUnknownFlag(parts[0])
-		}
-
-		// Validate value
-		if err := p.validateFlagValue(flagDef, parts[1]); err != nil {
-			return 0, &ParseError{
-				Err:   ErrFlagValue,
-				Flag:  flagDef.Name,
-				Value: parts[1],
-				Cause: err,
+	// Handle grouped short flags like -abc
+	if !long && len(s) > 1 {
+		for _, c := range s {
+			f := p.findFlag(string(c), cmd)
+			if f == nil {
+				return 0, errorUnknownFlag(string(c))
 			}
+			if f.Type != BoolType {
+				return 0, fmt.Errorf("non-boolean flag -%c cannot be grouped", c)
+			}
+			result.Flags[f.Name] = "true"
 		}
-
-		result.Flags[flagDef.Name] = parts[1]
 		return 1, nil
 	}
 
-	flagDef := p.findFlag(flagName, cmd)
-	if flagDef == nil {
-		return 0, errorUnknownFlag(flagName)
+	// Handle --flag=value
+	var value string
+	eq := strings.IndexByte(s, '=')
+	if eq != -1 {
+		value = s[eq+1:]
+		s = s[:eq]
 	}
 
-	if flagDef.Type == BoolType {
-		// check if next argument exists and is not a flag
-		// (for '--cute true' format)
-		if i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
-			value := args[i+1]
-			if err := p.validateFlagValue(flagDef, value); err != nil {
-				return 0, &ParseError{
-					Err:   ErrFlagValue,
-					Flag:  flagDef.Name,
-					Value: value,
-					Cause: err,
-				}
-			}
-			result.Flags[flagDef.Name] = value
-			return 2, nil
-		}
-
-		// (--cute) means true (no value provided)
-		result.Flags[flagDef.Name] = "true"
-		return 1, nil
+	f := p.findFlag(s, cmd)
+	if f == nil {
+		return 0, errorUnknownFlag(s)
 	}
 
-	// Non-boolean flag requires value
-	if i+1 >= len(args) || strings.HasPrefix(args[i+1], "-") {
-		return 0, errorMissingValue(flagName)
-	}
-
-	value := args[i+1]
-
-	// Validate value
-	if err := p.validateFlagValue(flagDef, value); err != nil {
-		return 0, &ParseError{
-			Err:   ErrFlagValue,
-			Flag:  flagDef.Name,
-			Value: value,
-			Cause: err,
-		}
-	}
-
-	result.Flags[flagDef.Name] = value
-	return 2, nil
-}
-
-// parseShortFlag handles -f and -f value formats
-func (p *Parser) parseShortFlag(arg string, args []string, i int, cmd *CommandDef, result *ParseResult) (int, error) {
-	flagChars := strings.TrimPrefix(arg, "-")
-
-	// Handle single flag: -f
-	if len(flagChars) == 1 {
-		flagDef := p.findFlag(flagChars, cmd)
-		if flagDef == nil {
-			return 0, errorUnknownFlag(flagChars)
-		}
-
-		if flagDef.Type == BoolType {
-			// -c yes format
+	// Determine value if not via '='
+	if value == "" {
+		// If boolean, allow --flag or -f
+		if f.Type == BoolType {
+			// check if next token is value (e.g., --cute yes)
 			if i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
-				value := args[i+1]
-				if err := p.validateFlagValue(flagDef, value); err != nil {
-					return 0, &ParseError{
-						Err:   ErrFlagValue,
-						Flag:  flagDef.Name,
-						Value: value,
-						Cause: err,
-					}
+				v := args[i+1]
+				if err := p.validateFlagValue(f, v); err != nil {
+					return 0, &ParseError{Err: ErrFlagValue, Flag: f.Name, Value: v, Cause: err}
 				}
-				result.Flags[flagDef.Name] = value
+				result.Flags[f.Name] = v
 				return 2, nil
 			}
-			// -c
-			result.Flags[flagDef.Name] = "true"
+			result.Flags[f.Name] = "true"
 			return 1, nil
 		}
 
-		// Non-boolean flag requires value
+		// Non-bool must have explicit value
 		if i+1 >= len(args) || strings.HasPrefix(args[i+1], "-") {
-			return 0, errorMissingValue(flagChars)
+			return 0, errorMissingValue(s)
 		}
-
-		value := args[i+1]
-
-		// Validate value
-		if err := p.validateFlagValue(flagDef, value); err != nil {
-			return 0, &ParseError{
-				Err:   ErrFlagValue,
-				Flag:  flagDef.Name,
-				Value: value,
-				Cause: err,
-			}
+		value = args[i+1]
+		consumed := 2
+		if err := p.validateFlagValue(f, value); err != nil {
+			return 0, &ParseError{Err: ErrFlagValue, Flag: f.Name, Value: value, Cause: err}
 		}
-
-		result.Flags[flagDef.Name] = value
-		return 2, nil
+		result.Flags[f.Name] = value
+		return consumed, nil
 	}
 
-	// Handle grouped flags: -abc (only boolean flags allowed)
-	for _, char := range flagChars {
-		flagStr := string(char)
-		flagDef := p.findFlag(flagStr, cmd)
-		if flagDef == nil {
-			return 0, errorUnknownFlag(flagStr)
-		}
-		if flagDef.Type != BoolType {
-			return 0, fmt.Errorf("non-boolean flag -%s cannot be grouped", flagStr)
-		}
-		result.Flags[flagDef.Name] = "true"
+	// Validate --flag=value
+	if err := p.validateFlagValue(f, value); err != nil {
+		return 0, &ParseError{Err: ErrFlagValue, Flag: f.Name, Value: value, Cause: err}
 	}
-
+	result.Flags[f.Name] = value
 	return 1, nil
 }
 
