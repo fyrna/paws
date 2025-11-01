@@ -289,7 +289,7 @@ func (p *Parser) validateFlagValue(flag *Flag, value string) error {
 		}
 		if flag.Min != 0 || flag.Max != 0 {
 			if val < float64(flag.Min) || val > float64(flag.Max) {
-				return fmt.Errorf("value %f out of range [%d, %d]", val, flag.Min, flag.Max)
+				return fmt.Errorf("value %f out of range [%f, %f]", val, float64(flag.Min), float64(flag.Max))
 			}
 		}
 
