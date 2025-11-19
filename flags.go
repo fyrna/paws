@@ -25,6 +25,8 @@ type Flag struct {
 	ChoicesOpt []string // Allowed values for string flags
 	Min, Max   int      // Range constraints for integer flags
 	HelpText   string   // Help description
+
+	choices map[string]struct{}
 }
 
 // Paw creates a new flag with the specified name and aliases
@@ -57,8 +59,8 @@ func Paw[T FlagTypeConstraint](name string, aliases ...string) *Flag {
 }
 
 // Default sets the default value for the flag
-func (f *Flag) Default(value any) *Flag {
-	f.DefValue = value
+func (f *Flag) Default(v any) *Flag {
+	f.DefValue = v
 	return f
 }
 
@@ -74,14 +76,25 @@ func (f *Flag) Help(text string) *Flag {
 	return f
 }
 
-// Choices sets allowed values for string flags
-func (f *Flag) Choices(choices ...string) *Flag {
-	f.ChoicesOpt = choices
+// Choices only valid for string flags.
+func (f *Flag) Choices(opts ...string) *Flag {
+	if f.Type != StringType {
+		panic("Choices can only be used on string flags")
+	}
+
+	f.choices = make(map[string]struct{}, len(opts))
+	for _, o := range opts {
+		f.choices[o] = struct{}{}
+	}
+	f.ChoicesOpt = opts
 	return f
 }
 
-// Range sets minimum and maximum values for integer flags
+// Range only valid for numeric flags.
 func (f *Flag) Range(min, max int) *Flag {
+	if f.Type != IntType && f.Type != UintType && f.Type != FloatType {
+		panic("Range can only be used on int/uint/float flags")
+	}
 	f.Min = min
 	f.Max = max
 	return f

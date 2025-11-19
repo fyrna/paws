@@ -2,6 +2,7 @@ package paws
 
 import (
 	"fmt"
+	"math"
 	"slices"
 	"strconv"
 	"strings"
@@ -27,6 +28,8 @@ type ParseResult struct {
 type Parser struct {
 	Commands []*CommandDef // Registered commands
 	Flags    []*Flag       // Global flags
+
+	flagIndex map[string]*Flag
 }
 
 // New creates a new argument parser
@@ -48,6 +51,7 @@ func (p *Parser) AddCommand(path []string, flags []*Flag) {
 // AddFlags registers global flags with the parser
 func (p *Parser) AddFlags(flags ...*Flag) {
 	p.Flags = append(p.Flags, flags...)
+	p.buildFlagMap()
 }
 
 // Parse parses command line arguments and returns a ParseResult
@@ -58,7 +62,6 @@ func (p *Parser) Parse(args []string) (*ParseResult, error) {
 		RawArgs:    args,
 	}
 
-	// Build global flag lookup table
 	for _, flag := range p.Flags {
 		result.GlobalFlag[flag.Name] = flag
 		for _, alias := range flag.Aliases {
@@ -161,10 +164,11 @@ func (p *Parser) parseFlag(arg string, args []string, i int, cmd *CommandDef, re
 
 	// Handle --flag=value
 	var value string
-	eq := strings.IndexByte(s, '=')
-	if eq != -1 {
-		value = s[eq+1:]
-		s = s[:eq]
+	name, val, found := strings.Cut(s, "=")
+
+	if found {
+		value = val
+		s = name
 	}
 
 	f := p.findFlag(s, cmd)
@@ -174,17 +178,21 @@ func (p *Parser) parseFlag(arg string, args []string, i int, cmd *CommandDef, re
 
 	// Determine value if not via '='
 	if value == "" {
-		// If boolean, allow --flag or -f
+		// For boolean flags, check if next argument is a valid boolean value
 		if f.Type == BoolType {
-			// check if next token is value (e.g., --cute yes)
+			// If there's a next argument and it's a valid boolean value, use it
 			if i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
-				v := args[i+1]
-				if err := p.validateFlagValue(f, v); err != nil {
-					return 0, &ParseError{Err: ErrFlagValue, Flag: f.Name, Value: v, Cause: err}
+				nextArg := args[i+1]
+				if isValidBoolValue(nextArg) {
+					value = nextArg
+					if err := p.validateFlagValue(f, value); err != nil {
+						return 0, &ParseError{Err: ErrFlagValue, Flag: f.Name, Value: value, Cause: err}
+					}
+					result.Flags[f.Name] = value
+					return 2, nil
 				}
-				result.Flags[f.Name] = v
-				return 2, nil
 			}
+			// No explicit value provided, default to true
 			result.Flags[f.Name] = "true"
 			return 1, nil
 		}
@@ -210,13 +218,28 @@ func (p *Parser) parseFlag(arg string, args []string, i int, cmd *CommandDef, re
 	return 1, nil
 }
 
+func (p *Parser) buildFlagMap() {
+	if p.flagIndex == nil {
+		n := 0
+		for _, f := range p.Flags {
+			n += 1 + len(f.Aliases)
+		}
+		p.flagIndex = make(map[string]*Flag, len(p.Flags)*n)
+	}
+	clear(p.flagIndex)
+	for _, f := range p.Flags {
+		p.flagIndex[f.Name] = f
+		for _, a := range f.Aliases {
+			p.flagIndex[a] = f
+		}
+	}
+}
+
 // findFlag searches for a flag definition by name
 func (p *Parser) findFlag(name string, cmd *CommandDef) *Flag {
 	// Search in global flags first
-	for _, flag := range p.Flags {
-		if flag.Name == name || slices.Contains(flag.Aliases, name) {
-			return flag
-		}
+	if f, ok := p.flagIndex[name]; ok {
+		return f
 	}
 
 	// Search in command flags
@@ -254,18 +277,27 @@ func (p *Parser) ValidateRequired(result *ParseResult) error {
 func (p *Parser) validateFlagValue(flag *Flag, value string) error {
 	switch flag.Type {
 	case StringType:
-		if len(flag.ChoicesOpt) > 0 && !slices.Contains(flag.ChoicesOpt, value) {
-			return fmt.Errorf("value '%s' not in allowed choices: %v", value, flag.ChoicesOpt)
+		if len(flag.choices) > 0 {
+			if _, ok := flag.choices[value]; !ok {
+				return fmt.Errorf("value '%s' not in allowed choices: %v", value, flag.ChoicesOpt)
+			}
 		}
 
 	case IntType:
-		val, err := strconv.Atoi(value)
+		val, err := strconv.ParseInt(value, 10, 0)
 		if err != nil {
 			return fmt.Errorf("invalid integer value: '%s'", value)
 		}
+
+		if val < math.MinInt || val > math.MaxInt {
+			return fmt.Errorf("integer overflow: %s", value)
+		}
+
+		v := int(val)
+
 		if flag.Min != 0 || flag.Max != 0 {
-			if val < flag.Min || val > flag.Max {
-				return fmt.Errorf("value %d out of range [%d, %d]", val, flag.Min, flag.Max)
+			if v < flag.Min || v > flag.Max {
+				return fmt.Errorf("value %d out of range [%d, %d]", v, flag.Min, flag.Max)
 			}
 		}
 

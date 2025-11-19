@@ -36,7 +36,7 @@ func (e *ParseError) Error() string {
 // Unwrap returns the underlying error
 func (e *ParseError) Unwrap() error { return e.Err }
 
-// Helper functions to create specific parse errors
+// helpers to build typed ParseError
 func errorUnknownFlag(flag string) *ParseError {
 	return &ParseError{Err: ErrUnknownFlag, Flag: flag}
 }
