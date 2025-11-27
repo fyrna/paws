@@ -7,11 +7,11 @@ import (
 
 // Common error types for argument parsing
 var (
-	ErrUnknownFlag  = errors.New("paws: unknown flag")
-	ErrFlagValue    = errors.New("paws: invalid flag value")
-	ErrMissingValue = errors.New("paws: flag requires value")
-	ErrRequiredFlag = errors.New("paws: required flag missing")
-	ErrParse        = errors.New("paws: parse error")
+	ErrUnknownFlag  = errors.New("unknown flag")
+	ErrFlagValue    = errors.New("invalid flag value")
+	ErrMissingValue = errors.New("flag requires value")
+	ErrRequiredFlag = errors.New("required flag missing")
+	ErrParse        = errors.New("parse error")
 )
 
 // ParseError represents a parsing error with context
